@@ -1,3 +1,6 @@
 <Solution>
-  <Project Path="BlitzStream/BlitzStream.csproj" />
+  <Project Path="src/BlitzStream.Application/BlitzStream.Application.csproj" />
+  <Project Path="src/BlitzStream.Domain/BlitzStream.Domain.csproj" />
+  <Project Path="src/BlitzStream.Infrastructure/BlitzStream.Infrastructure.csproj" />
+  <Project Path="src/BlitzStream.Worker/BlitzStream.Worker.csproj" />
 </Solution>
