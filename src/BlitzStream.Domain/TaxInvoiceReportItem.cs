@@ -6,10 +6,10 @@
 /// </summary>
 public readonly record struct TaxInvoiceReportItem(
     long Id,
-    long? TaxSerialNumber,      // در جدول bigint است و می‌تواند null باشد
+    string? TaxSerialNumber,      // در جدول bigint است و می‌تواند null باشد
     string InvoiceNumber,       // در جدول TaxInvoiceNumber یا InvoiceReferenceId
     DateTime InvoiceDate,       // در جدول InvoiceCreatedAt
-    decimal CashPaymentAmount   // در جدول TotalInvoiceAmount یا CashPaymentAmount
+    decimal? CashPaymentAmount   // در جدول TotalInvoiceAmount یا CashPaymentAmount
 );
 //public sealed record TaxInvoiceReportItem
 //{

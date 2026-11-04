@@ -1,8 +1,9 @@
-﻿using System.Data;
-using BlitzStream.Domain;
+﻿using BlitzStream.Domain;
 using BlitzStream.Domain.Contracts;
 using Microsoft.Data.SqlClient;
 using Microsoft.Extensions.Configuration;
+using System.Data;
+using System.Runtime.CompilerServices;
 
 
 namespace BlitzStream.Infrastructure;
@@ -13,11 +14,11 @@ public class TaxInvoiceRepository : ITaxInvoiceRepository
 
     public TaxInvoiceRepository(IConfiguration configuration)
     {
-        _connectionString = configuration.GetConnectionString("DefaultConnection")
-                            ?? throw new InvalidOperationException("Connection string 'SqlDatabase' not found."); ;
+        _connectionString = configuration.GetConnectionString("Warehouse")
+                            ?? throw new InvalidOperationException("Connection string 'Warehouse' not found."); ;
     }
 
-    public async IAsyncEnumerable<TaxInvoiceReportItem> StreamInvoicesAsync(InvoiceExportCriteria criteria, CancellationToken cancellationToken = default)
+    public async IAsyncEnumerable<TaxInvoiceReportItem> StreamInvoicesAsync(InvoiceExportCriteria criteria, [EnumeratorCancellation] CancellationToken cancellationToken = default)
     {
         const string sql = """
                            SELECT 
@@ -42,7 +43,7 @@ public class TaxInvoiceRepository : ITaxInvoiceRepository
         command.CommandTimeout = 120;
 
         // استفاده از پارامترهای مشخص برای جلوگیری از SQL Injection و کامپایل بهینه Execution Plan
-        command.Parameters.Add(new SqlParameter($"@FromDate", SqlDbType.DateTime2) { Value = criteria.FromInvoiceDate });
+        command.Parameters.Add(new SqlParameter("@FromDate", SqlDbType.DateTime2) { Value = criteria.FromInvoiceDate });
         command.Parameters.Add(new SqlParameter("@ToDate", SqlDbType.DateTime2) { Value = criteria.ToInvoiceDate });
 
         // CommandBehavior.SequentialAccess جادوی معمارانه برای استریم واقعی است!
@@ -53,10 +54,10 @@ public class TaxInvoiceRepository : ITaxInvoiceRepository
         {
             yield return new TaxInvoiceReportItem(
                 Id: reader.GetInt64(0),
-                TaxSerialNumber: reader.IsDBNull(1) ? null : reader.GetInt64(1),
+                TaxSerialNumber: reader.IsDBNull(1) ? null : reader.GetString(1),
                 InvoiceNumber: reader.GetString(2),
                 InvoiceDate: reader.GetDateTime(3),
-                CashPaymentAmount: reader.GetDecimal(4)
+                CashPaymentAmount: reader.IsDBNull(4) ? null : reader.GetDecimal(4)
             );
         }
     }
