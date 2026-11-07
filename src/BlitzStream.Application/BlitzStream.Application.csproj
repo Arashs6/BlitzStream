@@ -6,4 +6,8 @@
     <Nullable>enable</Nullable>
   </PropertyGroup>
 
+  <ItemGroup>
+    <ProjectReference Include="..\BlitzStream.Domain\BlitzStream.Domain.csproj" />
+  </ItemGroup>
+
 </Project>
