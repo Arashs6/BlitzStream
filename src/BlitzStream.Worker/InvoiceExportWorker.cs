@@ -1,22 +1,26 @@
 ﻿using System.Diagnostics;
 using BlitzStream.Domain;
 using BlitzStream.Domain.Contracts;
-using Microsoft.Extensions.Hosting;
-using Microsoft.Extensions.Logging;
-using Microsoft.Extensions.DependencyInjection;
 
 namespace BlitzStream.Worker;
 
+/// <summary>
+/// بنچمارک استریم فاکتورها از دیتابیس (در Program.cs ثبت نشده؛ برای اجرا باید AddHostedService شود).
+/// بازه تاریخ از کانفیگ Benchmark:FromDate و Benchmark:ToDate خوانده می‌شود.
+/// </summary>
 public class InvoiceExportWorker : BackgroundService
 {
     private readonly IServiceScopeFactory _scopeFactory;
+    private readonly IConfiguration _configuration;
     private readonly ILogger<InvoiceExportWorker> _logger;
 
     public InvoiceExportWorker(
         IServiceScopeFactory scopeFactory,
+        IConfiguration configuration,
         ILogger<InvoiceExportWorker> logger)
     {
         _scopeFactory = scopeFactory;
+        _configuration = configuration;
         _logger = logger;
     }
 
@@ -24,21 +28,19 @@ public class InvoiceExportWorker : BackgroundService
     {
         _logger.LogInformation("Invoice Export Worker started at: {Time}", DateTimeOffset.Now);
 
-        // ثبت مصرف حافظه در نقطه شروع
-        var initialMemory = GC.GetTotalMemory(forceFullCollection: true);
+        // میزان حافظه تخصیص‌یافته (allocated) قبل از شروع؛ GetTotalMemory عدد پایداری نمی‌دهد
+        var initialAllocated = GC.GetTotalAllocatedBytes(precise: true);
         var stopwatch = Stopwatch.StartNew();
 
         try
         {
-            // ساخت اسکوپ برای سرویس‌های Scoped
             using var scope = _scopeFactory.CreateScope();
             var repository = scope.ServiceProvider.GetRequiredService<ITaxInvoiceRepository>();
 
-            // بازه زمانی تستی (می‌تونی بر اساس داده‌های تستی خودت تغییر بدی)
             var criteria = new InvoiceExportCriteria
             {
-                FromInvoiceDate = new DateTime(2023, 01, 01),
-                ToInvoiceDate = new DateTime(2027, 01, 01)
+                FromInvoiceDate = _configuration.GetValue("Benchmark:FromDate", new DateTime(2023, 01, 01)),
+                ToInvoiceDate = _configuration.GetValue("Benchmark:ToDate", new DateTime(2027, 01, 01))
             };
 
             ulong recordCount = 0;
@@ -46,39 +48,36 @@ public class InvoiceExportWorker : BackgroundService
 
             _logger.LogInformation("Streaming invoices from database...");
 
-            // مصرف استریم با await foreach و احترام به Cancellation
             await foreach (var invoice in repository.StreamInvoicesAsync(criteria, stoppingToken))
             {
                 recordCount++;
                 totalCashPayment += invoice.CashPaymentAmount ?? 0;
 
-                // هر 10,000 رکورد یک لاگ پیشرفت می‌اندازیم
                 if (recordCount % 10_000 == 0)
                 {
                     _logger.LogInformation(
-                        "Processed: {Count:N0} records | Current Batch Total: {Sum:C0}",
+                        "Processed: {Count:N0} records | Running Total: {Sum:N0}",
                         recordCount,
                         totalCashPayment);
                 }
             }
 
             stopwatch.Stop();
-            var finalMemory = GC.GetTotalMemory(forceFullCollection: false);
-            var memoryDeltaMb = (finalMemory - initialMemory) / (1024.0 * 1024.0);
+            var allocatedMb = (GC.GetTotalAllocatedBytes(precise: true) - initialAllocated) / (1024.0 * 1024.0);
+            var peakWorkingSetMb = Process.GetCurrentProcess().PeakWorkingSet64 / (1024.0 * 1024.0);
 
             _logger.LogInformation(
-                "Export Finished! Total Records: {Count:N0} in {Elapsed:g}. Memory Diff: {Memory:F2} MB",
+                "Export Finished! Total Records: {Count:N0} in {Elapsed:g}. Allocated: {Allocated:F2} MB, Peak Working Set: {Peak:F2} MB",
                 recordCount,
                 stopwatch.Elapsed,
-                memoryDeltaMb);
+                allocatedMb,
+                peakWorkingSetMb);
         }
         catch (OperationCanceledException)
         {
             _logger.LogWarning("Streaming was canceled gracefully.");
         }
-        catch (Exception ex)
-        {
-            _logger.LogError(ex, "An error occurred during invoice streaming.");
-        }
+        // سایر خطاها عمداً گرفته نمی‌شوند: BackgroundService آن‌ها را log می‌کند و Host متوقف می‌شود،
+        // تا شکست بنچمارک بی‌صدا نماند.
     }
 }
